@@ -1339,39 +1339,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Developer / Quick Deployment Panel */}
-          <div className="mt-8 p-6 bg-gradient-to-br from-amber-500/10 via-yellow-500/5 to-transparent rounded-2xl border-2 border-dashed border-amber-500 shadow-md max-w-xl mx-auto space-y-4 text-right" dir="rtl">
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-2xl">⚡</span>
-              <h3 className="text-sm font-black text-stone-950">لوحة النشر السريع على GitHub & Netlify عيوني</h3>
-            </div>
-            <p className="text-[11px] text-stone-800 leading-relaxed font-bold">
-              لقد قمنا بتصحيح وتعديل الكود البرمجي بالكامل ليدعم التشغيل الثنائي (Dual Mode) ليعمل معك تلقائياً على خوادم الاستضافة الكاملة أو على مواقع الاستضافة الساكنة المجانية بدون أي مشاكل!
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <a 
-                href="./newsram-project-updated.zip" 
-                download="newsram-project-updated.zip"
-                className="inline-flex items-center justify-center gap-2.5 bg-[#FFFDF0] hover:bg-amber-500/10 text-stone-950 px-4 py-3 rounded-xl transition-all shadow-sm border-2 border-amber-500 hover:scale-102 text-right font-black text-xs cursor-pointer"
-              >
-                <span>📂 تحميل السورس كود (لـ GitHub)</span>
-              </a>
-
-              <a 
-                href="./newsram-build-only.zip" 
-                download="newsram-build-only.zip"
-                className="inline-flex items-center justify-center gap-2.5 bg-amber-500 hover:bg-amber-600 text-stone-950 px-4 py-3 rounded-xl transition-all shadow-sm border-2 border-amber-600 hover:scale-102 text-right font-black text-xs cursor-pointer"
-              >
-                <span>⚡ تحميل البناء الجاهز (لـ Netlify)</span>
-              </a>
-            </div>
-            <div className="p-3.5 bg-white/60 rounded-xl text-[10px] text-stone-700 space-y-2 leading-relaxed font-bold border border-stone-200">
-              <p className="font-black text-stone-950">💡 كيفية النشر والرفع عيوني:</p>
-              <p>• <strong>لـ Netlify:</strong> قم بتحميل ملف "البناء الجاهز (Vite Build)" ثم اسحبه وأفلته مباشرة في موقع Netlify Drag-and-Drop وسيصبح موقعك لايف فوراً!</p>
-              <p>• <strong>لـ GitHub:</strong> قم بفك ضغط ملف "السورس كود الكامل"، ثم ارفعه لمستودعك الجديد على GitHub للنشر البرمجي.</p>
-            </div>
-          </div>
-
+       
         </div>
       </section>
 
