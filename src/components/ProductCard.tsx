@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Star, ShoppingCart, ShieldCheck, Info, X, Check, Heart } from 'lucide-react';
 import { Product } from '../types';
 import { USD_TO_IQD } from '../data';
+import { DEFAULT_PRODUCT_IMAGE, useImageFallback } from '../imageUtils';
 
 interface ProductCardProps {
   key?: string | number;
@@ -58,10 +59,11 @@ export default function ProductCard({
         {/* Image Container */}
         <div className="relative aspect-square overflow-hidden bg-white shrink-0 border-b border-stone-200">
           <img 
-            src={product.image} 
+            src={product.image || DEFAULT_PRODUCT_IMAGE}
             alt={product.name} 
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             referrerPolicy="no-referrer"
+            onError={(event) => useImageFallback(event.currentTarget)}
           />
           {product.tags && product.tags.length > 0 && (
             <div className="absolute bottom-3 right-3 flex flex-wrap gap-1">
@@ -171,10 +173,11 @@ export default function ProductCard({
             <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto text-right bg-gradient-to-b from-yellow-500/5 to-transparent">
               <div className="flex gap-4">
                 <img 
-                  src={product.image} 
+                  src={product.image || DEFAULT_PRODUCT_IMAGE}
                   alt={product.name} 
                   className="w-24 h-24 rounded-xl object-cover border-2 border-yellow-400 bg-white shadow-sm"
                   referrerPolicy="no-referrer"
+                  onError={(event) => useImageFallback(event.currentTarget)}
                 />
                 <div className="space-y-1">
                   <h3 className="font-black text-sm text-stone-950 leading-snug">{product.name}</h3>

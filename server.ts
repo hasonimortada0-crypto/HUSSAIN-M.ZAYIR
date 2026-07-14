@@ -125,7 +125,7 @@ async function startServer() {
           priceUSD: parseFloat(p.priceUSD) || 0,
           category: p.category || "lighting-indoor",
           subcategory: p.subcategory || "",
-          image: p.image || "https://images.unsplash.com/photo-1543248939-ff40856f65d4?auto=format&fit=crop&w=600&q=80",
+          image: p.image || "/product-placeholder.svg",
           rating: parseFloat(p.rating) || 5.0,
           reviewsCount: parseInt(p.reviewsCount) || 1,
           specs: typeof p.specs === "object" && p.specs !== null ? p.specs : {},
