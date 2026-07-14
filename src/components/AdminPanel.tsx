@@ -455,36 +455,8 @@ export default function AdminPanel({
       // Refresh products from app context
       onRefreshProducts();
     } catch (err: any) {
-      console.warn("API Error, falling back to local storage import:", err);
-      try {
-        const saved = localStorage.getItem('newsram_products');
-        let currentList = saved ? JSON.parse(saved) : [...products];
-        
-        let importedCount = 0;
-        const processedList = excelProductsPreview.map((p, index) => ({
-          ...p,
-          id: p.id || "prod-import-" + index + "-" + Math.floor(1000 + Math.random()*9000)
-        }));
-
-        if (replaceAllOnImport) {
-          localStorage.setItem('newsram_products', JSON.stringify(processedList));
-          importedCount = processedList.length;
-        } else {
-          const newList = [...currentList, ...processedList];
-          localStorage.setItem('newsram_products', JSON.stringify(newList));
-          importedCount = processedList.length;
-        }
-        
-        triggerNotification(`[محلي] تم بنجاح استيراد وتجهيز ${importedCount} منتج في معروضات متجر نيوسرام! 🎉`);
-        
-        setExcelProductsPreview([]);
-        setExcelFileName('');
-        setShowImportSection(false);
-        onRefreshProducts();
-      } catch (innerErr) {
-        console.error(innerErr);
-        triggerNotification("عذراً، حدث خطأ أثناء حفظ المنتجات المستوردة محلياً.");
-      }
+      console.error("Database import failed:", err);
+      triggerNotification("عذراً، تعذر حفظ المنتجات المستوردة في قاعدة البيانات.");
     } finally {
       setIsImporting(false);
     }
@@ -506,22 +478,8 @@ export default function AdminPanel({
         throw new Error("fail");
       }
     } catch (err) {
-      console.warn("API Error, updating order status in local storage:", err);
-      try {
-        const saved = localStorage.getItem('newsram_orders');
-        if (saved) {
-          const list = JSON.parse(saved);
-          const updatedList = list.map((o: any) => o.id === orderId ? { ...o, status: newStatus } : o);
-          localStorage.setItem('newsram_orders', JSON.stringify(updatedList));
-          triggerNotification(`[محلي] تم تحديث حالة الطلب بنجاح إلى: ${newStatus}`);
-          onRefreshOrders();
-        } else {
-          triggerNotification("عذراً، لم نتمكن من تحديث حالة الطلب.");
-        }
-      } catch (innerErr) {
-        console.error(innerErr);
-        triggerNotification("عذراً، حدث خطأ أثناء تحديث حالة الطلب.");
-      }
+      console.error("Database order update failed:", err);
+      triggerNotification("عذراً، تعذر تحديث حالة الطلب في قاعدة البيانات.");
     }
   };
 
@@ -546,20 +504,8 @@ export default function AdminPanel({
         throw new Error("fail");
       }
     } catch (error) {
-      console.warn("API Error, deleting product from local storage:", error);
-      try {
-        const saved = localStorage.getItem('newsram_products');
-        const currentList = saved ? JSON.parse(saved) : [...products];
-        const updatedList = currentList.filter((p: any) => p.id !== productId);
-        localStorage.setItem('newsram_products', JSON.stringify(updatedList));
-        
-        onRefreshProducts();
-        setProductToDelete(null);
-        triggerNotification(`[محلي] تم حذف المنتج "${productName}" بنجاح! 🗑️`);
-      } catch (innerErr) {
-        console.error(innerErr);
-        triggerNotification("حدث خطأ أثناء محاولة الحذف محلياً.");
-      }
+      console.error("Database product deletion failed:", error);
+      triggerNotification("تعذر حذف المنتج من قاعدة البيانات.");
     }
   };
 
@@ -571,8 +517,9 @@ export default function AdminPanel({
     }
 
     try {
-      const response = await fetch('/api/products', {
-        method: 'POST',
+      const productUrl = editingProduct.id ? `/api/products/${editingProduct.id}` : '/api/products';
+      const response = await fetch(productUrl, {
+        method: editingProduct.id ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -590,54 +537,17 @@ export default function AdminPanel({
         triggerNotification(`خطأ في الحفظ: ${errData.error || 'يرجى المحاولة مجدداً'}`);
       }
     } catch (error) {
-      console.warn("API Error, saving product to local storage:", error);
-      try {
-        const saved = localStorage.getItem('newsram_products');
-        const currentList = saved ? JSON.parse(saved) : [...products];
-        
-        let updatedList = [];
-        let savedName = editingProduct.name;
-        
-        if (editingProduct.id) {
-          updatedList = currentList.map((p: any) => p.id === editingProduct.id ? editingProduct : p);
-        } else {
-          const newProduct = {
-            ...editingProduct,
-            id: "prod-local-" + Math.floor(100000 + Math.random() * 900000).toString()
-          };
-          updatedList = [...currentList, newProduct];
-          savedName = newProduct.name;
-        }
-        
-        localStorage.setItem('newsram_products', JSON.stringify(updatedList));
-        onRefreshProducts();
-        setIsProductFormOpen(false);
-        setEditingProduct(null);
-        triggerNotification(`[محلي] تم حفظ منتج "${savedName}" بنجاح في المعرض المحلي!`);
-      } catch (innerErr) {
-        console.error(innerErr);
-        triggerNotification("فشل حفظ المنتج محلياً.");
-      }
+      console.error("Database product save failed:", error);
+      triggerNotification("تعذر حفظ المنتج في قاعدة البيانات.");
     }
   };
 
   const handleSaveConfigSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      let currentConfig = {};
-      try {
-        const getRes = await fetch('/api/config');
-        if (getRes.ok) {
-          currentConfig = await getRes.json();
-        } else {
-          const local = localStorage.getItem('newsram_config');
-          if (local) currentConfig = JSON.parse(local);
-        }
-      } catch (getErr) {
-        console.error("Error fetching config before save:", getErr);
-        const local = localStorage.getItem('newsram_config');
-        if (local) currentConfig = JSON.parse(local);
-      }
+      const getRes = await fetch('/api/config');
+      if (!getRes.ok) throw new Error(`Config request failed: ${getRes.status}`);
+      const currentConfig = await getRes.json();
 
       const updatedConfig = {
         ...currentConfig,
@@ -658,7 +568,6 @@ export default function AdminPanel({
 
       if (response.ok) {
         triggerNotification("تم حفظ إعدادات وتخصيصات المتجر بنجاح وجعلها عامة! ⚙️");
-        localStorage.setItem('newsram_config', JSON.stringify(updatedConfig));
         if (onConfigUpdated) {
           onConfigUpdated(updatedConfig);
         }
@@ -666,19 +575,8 @@ export default function AdminPanel({
         throw new Error("fail");
       }
     } catch (err) {
-      console.warn("API Error, saving config to local storage:", err);
-      const updatedConfig = {
-        heroImage: heroImageUrl,
-        slogan: storeSlogan,
-        rate: exchangeRate,
-        adminPassword: adminPasswordConfig,
-        salesPassword: salesPasswordConfig
-      };
-      localStorage.setItem('newsram_config', JSON.stringify(updatedConfig));
-      triggerNotification("[محلي] تم حفظ إعدادات وتخصيصات المتجر بنجاح في المتصفح! ⚙️");
-      if (onConfigUpdated) {
-        onConfigUpdated(updatedConfig);
-      }
+      console.error("Database config save failed:", err);
+      triggerNotification("تعذر حفظ إعدادات المتجر في قاعدة البيانات.");
     }
   };
 

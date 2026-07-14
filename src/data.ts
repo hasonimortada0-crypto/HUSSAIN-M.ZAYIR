@@ -1,5 +1,4 @@
-import { Product, Category } from './types';
-import productsData from './products.json';
+import { Category } from './types';
 
 export const USD_TO_IQD = 1500; // سعر الصرف الثابت المستخدم في المتجر لتسهيل الحساب
 
@@ -35,5 +34,3 @@ export const CATEGORIES: Category[] = [
     description: 'أسلاك نحاسية نقية معزولة، قواطع دورة (جوزات) أصلية، ومستلزمات التأسيس الكهربائي.'
   }
 ];
-
-export const PRODUCTS: Product[] = productsData as Product[];
