@@ -28,7 +28,7 @@ import {
   Bell
 } from 'lucide-react';
 import { Product, CartItem } from './types';
-import { PRODUCTS, CATEGORIES, USD_TO_IQD } from './data';
+import { CATEGORIES, USD_TO_IQD } from './data';
 import ProductCard from './components/ProductCard';
 import AIAdvisor from './components/AIAdvisor';
 import AdminPanel from './components/AdminPanel';
@@ -54,7 +54,7 @@ const normalizePhone = (phone: string): string => {
 };
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>(PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -142,27 +142,14 @@ export default function App() {
   const fetchProducts = async () => {
     try {
       const response = await fetch('/api/products');
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setProducts(data);
-          localStorage.setItem('newsram_products', JSON.stringify(data));
-          return;
-        }
-      }
+      if (!response.ok) throw new Error(`Products request failed: ${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error('Products response is not an array');
+      setProducts(data);
     } catch (error) {
-      console.warn("Error fetching dynamic products, using localStorage fallback:", error);
-    }
-    // Fallback logic for static environments like GitHub Pages and Netlify
-    const saved = localStorage.getItem('newsram_products');
-    if (saved) {
-      try {
-        setProducts(JSON.parse(saved));
-      } catch (e) {
-        setProducts(PRODUCTS);
-      }
-    } else {
-      setProducts(PRODUCTS);
+      console.error("Error fetching products from database:", error);
+      setProducts([]);
+      triggerNotification("تعذر تحميل المنتجات من قاعدة البيانات. يرجى إعادة المحاولة.");
     }
   };
 
@@ -183,25 +170,12 @@ export default function App() {
     const fetchConfig = async () => {
       try {
         const response = await fetch('/api/config');
-        if (response.ok) {
-          const data = await response.json();
-          if (data) {
-            setStoreConfig(data);
-            localStorage.setItem('newsram_config', JSON.stringify(data));
-            return;
-          }
-        }
+        if (!response.ok) throw new Error(`Config request failed: ${response.status}`);
+        const data = await response.json();
+        if (data) setStoreConfig(data);
       } catch (error) {
-        console.warn("Error loading config, using localStorage fallback:", error);
-      }
-      // Fallback
-      const saved = localStorage.getItem('newsram_config');
-      if (saved) {
-        try {
-          setStoreConfig(JSON.parse(saved));
-        } catch (e) {
-          // ignore
-        }
+        console.error("Error loading config from database:", error);
+        triggerNotification("تعذر تحميل إعدادات المتجر من قاعدة البيانات.");
       }
     };
     fetchConfig();
@@ -211,25 +185,13 @@ export default function App() {
   const fetchOrders = async () => {
     try {
       const response = await fetch('/api/orders');
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setOrders(data);
-          localStorage.setItem('newsram_orders', JSON.stringify(data));
-          return;
-        }
-      }
+      if (!response.ok) throw new Error(`Orders request failed: ${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error('Orders response is not an array');
+      setOrders(data);
     } catch (error) {
-      console.warn("Error fetching orders, using localStorage fallback:", error);
-    }
-    // Fallback
-    const saved = localStorage.getItem('newsram_orders');
-    if (saved) {
-      try {
-        setOrders(JSON.parse(saved));
-      } catch (e) {
-        // ignore
-      }
+      console.error("Error fetching orders from database:", error);
+      setOrders([]);
     }
   };
 
@@ -350,20 +312,9 @@ export default function App() {
       return;
     }
     try {
-      let allOrders = [];
-      try {
-        const response = await fetch('/api/orders');
-        if (response.ok) {
-          allOrders = await response.json();
-          localStorage.setItem('newsram_orders', JSON.stringify(allOrders));
-        } else {
-          const local = localStorage.getItem('newsram_orders');
-          if (local) allOrders = JSON.parse(local);
-        }
-      } catch (err) {
-        const local = localStorage.getItem('newsram_orders');
-        if (local) allOrders = JSON.parse(local);
-      }
+      const response = await fetch('/api/orders');
+      if (!response.ok) throw new Error(`Orders request failed: ${response.status}`);
+      const allOrders = await response.json();
 
       const cleanTrack = normalizePhone(trackingPhone);
       const filtered = allOrders.filter((o: any) => {
@@ -462,18 +413,6 @@ export default function App() {
       totalIQD: cartTotalIQD
     };
 
-    const saveOrderLocally = (newOrder: any) => {
-      try {
-        const saved = localStorage.getItem('newsram_orders');
-        const list = saved ? JSON.parse(saved) : [];
-        list.push(newOrder);
-        localStorage.setItem('newsram_orders', JSON.stringify(list));
-        setOrders(list);
-      } catch (err) {
-        console.error("Failed to save order locally:", err);
-      }
-    };
-
     try {
       const response = await fetch('/api/orders', {
         method: 'POST',
@@ -485,11 +424,12 @@ export default function App() {
       if (response.ok) {
         await fetchOrders(); // refresh order state safely
       } else {
-        saveOrderLocally(orderData);
+        throw new Error(`Order request failed: ${response.status}`);
       }
     } catch (err) {
-      console.error("Failed to save order to server:", err);
-      saveOrderLocally(orderData);
+      console.error("Failed to save order to database:", err);
+      triggerNotification("تعذر حفظ الطلب في قاعدة البيانات. لم يتم إرسال الطلب، يرجى المحاولة مجدداً.");
+      return;
     }
 
     try {
