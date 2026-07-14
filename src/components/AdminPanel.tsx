@@ -22,11 +22,54 @@ import {
   CheckCircle,
   FileSpreadsheet,
   Upload,
-  AlertCircle
+  AlertCircle,
+  ClipboardPaste,
+  Link2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Product } from '../types';
 import { USD_TO_IQD } from '../data';
+import { DEFAULT_PRODUCT_IMAGE, useImageFallback } from '../imageUtils';
+
+const MAX_PRODUCT_IMAGE_SIZE = 10 * 1024 * 1024;
+
+function compressProductImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('تعذر قراءة ملف الصورة.'));
+    reader.onload = (event) => {
+      const source = event.target?.result;
+      if (typeof source !== 'string') {
+        reject(new Error('تعذر قراءة ملف الصورة.'));
+        return;
+      }
+
+      const image = new Image();
+      image.onerror = () => reject(new Error('ملف الصورة غير صالح أو تالف.'));
+      image.onload = () => {
+        const maxDimension = 1200;
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const context = canvas.getContext('2d');
+        if (!context) {
+          resolve(source);
+          return;
+        }
+
+        context.drawImage(image, 0, 0, width, height);
+        const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        resolve(canvas.toDataURL(outputType, outputType === 'image/png' ? undefined : 0.82));
+      };
+      image.src = source;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -104,6 +147,10 @@ export default function AdminPanel({
   // Product edit/create states
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isProductFormOpen, setIsProductFormOpen] = useState<boolean>(false);
+  const [isSavingProduct, setIsSavingProduct] = useState<boolean>(false);
+  const [isProcessingImage, setIsProcessingImage] = useState<boolean>(false);
+  const [isImageDragging, setIsImageDragging] = useState<boolean>(false);
+  const [imagePreviewError, setImagePreviewError] = useState<boolean>(false);
 
   // Store custom configuration state
   const [heroImageUrl, setHeroImageUrl] = useState<string>('');
@@ -146,6 +193,7 @@ export default function AdminPanel({
         setEditingProduct({ ...externalProductToEdit });
         setNewSpecKey('');
         setNewSpecValue('');
+        setImagePreviewError(false);
         setIsProductFormOpen(true);
         if (setExternalProductToEdit) {
           setExternalProductToEdit(null);
@@ -361,7 +409,7 @@ export default function AdminPanel({
             priceUSD: priceNum,
             category,
             subcategory: subcategory ? String(subcategory).trim() : '',
-            image: image ? String(image).trim() : 'https://images.unsplash.com/photo-1543248939-ff40856f65d4?auto=format&fit=crop&w=600&q=80',
+            image: image ? String(image).trim() : DEFAULT_PRODUCT_IMAGE,
             specs,
             rating: 5.0,
             reviewsCount: 1,
@@ -565,18 +613,47 @@ export default function AdminPanel({
 
   const handleSaveProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProduct || !editingProduct.name || !editingProduct.category) {
+    if (!editingProduct || !editingProduct.name?.trim() || !editingProduct.category) {
       triggerNotification("اسم المنتج والفئة مطلوبان عيوني!");
       return;
     }
 
+    if (!Number.isFinite(editingProduct.priceUSD) || (editingProduct.priceUSD || 0) < 0) {
+      triggerNotification("يرجى إدخال سعر صحيح لا يقل عن صفر.");
+      return;
+    }
+
+    const imageSource = editingProduct.image?.trim() || DEFAULT_PRODUCT_IMAGE;
+    const isAllowedImageSource = imageSource.startsWith('/') || imageSource.startsWith('data:image/') || (() => {
+      try {
+        const url = new URL(imageSource);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    })();
+
+    if (!isAllowedImageSource) {
+      triggerNotification("رابط الصورة غير صالح. استخدم رابطاً يبدأ بـ http أو https، أو ارفع صورة من جهازك.");
+      return;
+    }
+
+    const productToSave = {
+      ...editingProduct,
+      name: editingProduct.name.trim(),
+      englishName: editingProduct.englishName?.trim() || '',
+      description: editingProduct.description?.trim() || '',
+      image: imageSource
+    };
+
+    setIsSavingProduct(true);
     try {
       const response = await fetch('/api/products', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(editingProduct),
+        body: JSON.stringify(productToSave),
       });
 
       if (response.ok) {
@@ -596,13 +673,13 @@ export default function AdminPanel({
         const currentList = saved ? JSON.parse(saved) : [...products];
         
         let updatedList = [];
-        let savedName = editingProduct.name;
+        let savedName = productToSave.name;
         
-        if (editingProduct.id) {
-          updatedList = currentList.map((p: any) => p.id === editingProduct.id ? editingProduct : p);
+        if (productToSave.id) {
+          updatedList = currentList.map((p: any) => p.id === productToSave.id ? productToSave : p);
         } else {
           const newProduct = {
-            ...editingProduct,
+            ...productToSave,
             id: "prod-local-" + Math.floor(100000 + Math.random() * 900000).toString()
           };
           updatedList = [...currentList, newProduct];
@@ -618,6 +695,8 @@ export default function AdminPanel({
         console.error(innerErr);
         triggerNotification("فشل حفظ المنتج محلياً.");
       }
+    } finally {
+      setIsSavingProduct(false);
     }
   };
 
@@ -691,7 +770,7 @@ export default function AdminPanel({
       priceUSD: 0,
       category: 'lighting-indoor',
       subcategory: '',
-      image: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?auto=format&fit=crop&w=600&q=80',
+      image: DEFAULT_PRODUCT_IMAGE,
       rating: 5.0,
       reviewsCount: 1,
       specs: {
@@ -703,6 +782,7 @@ export default function AdminPanel({
     });
     setNewSpecKey('');
     setNewSpecValue('');
+    setImagePreviewError(false);
     setIsProductFormOpen(true);
   };
 
@@ -710,55 +790,93 @@ export default function AdminPanel({
     setEditingProduct({ ...product });
     setNewSpecKey('');
     setNewSpecValue('');
+    setImagePreviewError(false);
     setIsProductFormOpen(true);
+  };
+
+  const processProductImage = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      triggerNotification("عذراً، يرجى اختيار ملف صورة صحيح.");
+      return;
+    }
+    if (file.size > MAX_PRODUCT_IMAGE_SIZE) {
+      triggerNotification("حجم الصورة كبير جداً. الحد الأقصى المسموح هو 10 ميغابايت.");
+      return;
+    }
+
+    setIsProcessingImage(true);
+    try {
+      const compressedImage = await compressProductImage(file);
+      setEditingProduct(prev => prev ? { ...prev, image: compressedImage } : null);
+      setImagePreviewError(false);
+      triggerNotification("تمت إضافة الصورة وضغطها بنجاح.");
+    } catch (error) {
+      console.error('Product image processing failed:', error);
+      triggerNotification(error instanceof Error ? error.message : "تعذر تجهيز الصورة.");
+    } finally {
+      setIsProcessingImage(false);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        triggerNotification("عذراً، يرجى اختيار ملف صورة صحيح.");
-        return;
+    if (file) void processProductImage(file);
+    e.target.value = '';
+  };
+
+  const handleImageDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsImageDragging(false);
+    let file: File | null = null;
+    for (let index = 0; index < event.dataTransfer.files.length; index += 1) {
+      const candidate = event.dataTransfer.files.item(index);
+      if (candidate?.type.startsWith('image/')) {
+        file = candidate;
+        break;
       }
-      
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const maxDim = 800;
-          let width = img.width;
-          let height = img.height;
-          
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
-            
-            setEditingProduct(prev => prev ? { ...prev, image: compressedBase64 } : null);
-            triggerNotification("تم رفع وضغط الصورة بنجاح! 📸");
-          } else {
-            const base64String = event.target?.result as string;
-            setEditingProduct(prev => prev ? { ...prev, image: base64String } : null);
-            triggerNotification("تم رفع الصورة بنجاح! 📸");
-          }
-        };
-        img.src = event.target?.result as string;
-      };
-      reader.readAsDataURL(file);
+    }
+    if (file) {
+      void processProductImage(file);
+    } else {
+      triggerNotification("لم يتم العثور على صورة صالحة ضمن الملفات المسحوبة.");
+    }
+  };
+
+  const handleImagePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    let file: File | null = null;
+    for (let index = 0; index < event.clipboardData.items.length; index += 1) {
+      const item = event.clipboardData.items[index];
+      if (item.type.startsWith('image/')) {
+        file = item.getAsFile();
+        break;
+      }
+    }
+    if (file) {
+      event.preventDefault();
+      void processProductImage(file);
+    }
+  };
+
+  const handleClipboardImageButton = async () => {
+    if (!navigator.clipboard?.read) {
+      triggerNotification("انقر داخل منطقة الصورة ثم استخدم Ctrl+V أو لصق لإضافة الصورة.");
+      return;
+    }
+
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        const imageType = item.types.find(type => type.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          await processProductImage(new File([blob], `clipboard-image.${imageType.split('/')[1] || 'png'}`, { type: imageType }));
+          return;
+        }
+      }
+      triggerNotification("لا توجد صورة في الحافظة حالياً.");
+    } catch (error) {
+      console.warn('Clipboard image read failed:', error);
+      triggerNotification("تعذر الوصول للحافظة. انقر داخل منطقة الصورة ثم استخدم Ctrl+V.");
     }
   };
 
@@ -1586,9 +1704,10 @@ export default function AdminPanel({
                                       <td className="p-2 text-center align-middle relative group">
                                         <div className="w-9 h-9 mx-auto rounded-lg overflow-hidden border border-stone-200 bg-stone-50 relative flex items-center justify-center">
                                           <img 
-                                            src={p.image} 
+                                            src={p.image || DEFAULT_PRODUCT_IMAGE}
                                             alt="" 
                                             className="w-full h-full object-cover" 
+                                            onError={(event) => useImageFallback(event.currentTarget)}
                                           />
                                           <label className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity text-white text-[8px] font-black gap-0.5">
                                             <input 
@@ -1695,10 +1814,11 @@ export default function AdminPanel({
               {filteredProducts.map((prod) => (
                 <div key={prod.id} className="bg-white border border-amber-500/10 rounded-xl p-4 flex gap-4 hover:border-amber-500/20 transition-all shadow-sm">
                   <img 
-                    src={prod.image} 
+                    src={prod.image || DEFAULT_PRODUCT_IMAGE}
                     alt={prod.name} 
                     className="w-16 h-16 rounded-lg object-cover bg-stone-100 border border-stone-200 shrink-0"
                     referrerPolicy="no-referrer"
+                    onError={(event) => useImageFallback(event.currentTarget)}
                   />
                   <div className="flex-1 min-w-0 space-y-1 text-xs">
                     <h6 className="font-bold text-stone-900 truncate">{prod.name}</h6>
@@ -1871,7 +1991,8 @@ export default function AdminPanel({
                 <div className="space-y-1.5">
                   <label className="text-[10px] text-stone-500 font-bold uppercase">رمز مرور المدير العام (كامل الصلاحيات 👑)</label>
                   <input 
-                    type="text"
+                    type="password"
+                    autoComplete="new-password"
                     value={adminPasswordConfig}
                     onChange={(e) => setAdminPasswordConfig(e.target.value)}
                     placeholder="اتركه فارغاً للسماح بالدخول المباشر"
@@ -1883,7 +2004,8 @@ export default function AdminPanel({
                 <div className="space-y-1.5">
                   <label className="text-[10px] text-stone-500 font-bold uppercase">رمز مرور مسؤول المبيعات (المبيعات والطلبات فقط 🤝)</label>
                   <input 
-                    type="text"
+                    type="password"
+                    autoComplete="new-password"
                     value={salesPasswordConfig}
                     onChange={(e) => setSalesPasswordConfig(e.target.value)}
                     placeholder="رمز مرور المبيعات (مثال: sales123)"
@@ -1940,8 +2062,8 @@ export default function AdminPanel({
                 </button>
 
                 <a
-                  href="/newsram_project.zip"
-                  download="newsram_project.zip"
+                  href="/newsram-project-updated.zip"
+                  download="newsram-project-updated.zip"
                   className="bg-amber-500 hover:bg-amber-600 text-black px-4 py-2.5 rounded-lg text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <Download className="w-4 h-4" />
@@ -1966,7 +2088,12 @@ export default function AdminPanel({
                 {editingProduct.id ? 'تعديل بيانات وسعر المنتج' : 'إضافة منتج جديد للمخزن'}
               </h4>
               <button 
-                onClick={() => setIsProductFormOpen(false)}
+                type="button"
+                onClick={() => {
+                  setIsProductFormOpen(false);
+                  setEditingProduct(null);
+                }}
+                aria-label="إغلاق نموذج المنتج"
                 className="p-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-500 cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -2065,37 +2192,78 @@ export default function AdminPanel({
                 />
               </div>
 
-              {/* Base64 Image upload field */}
-              <div className="space-y-1.5 p-3.5 bg-[#FCFAF7] rounded-xl border border-amber-500/10 space-y-3">
-                <label className="text-[10px] text-amber-800 font-bold uppercase block flex items-center gap-1.5">
+              <div
+                tabIndex={0}
+                onPaste={handleImagePaste}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  setIsImageDragging(true);
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={(event) => {
+                  const nextTarget = event.relatedTarget;
+                  if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) setIsImageDragging(false);
+                }}
+                onDrop={handleImageDrop}
+                className={`p-4 rounded-xl border-2 border-dashed transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40 ${isImageDragging ? 'bg-amber-50 border-amber-500' : 'bg-[#FCFAF7] border-amber-500/20'}`}
+              >
+                <label className="text-[10px] text-amber-800 font-bold uppercase flex items-center gap-1.5">
                   <ImageIcon className="w-4 h-4 text-amber-700" />
-                  <span>تحميل صورة للمنتج (مع الضغط التلقائي):</span>
+                  <span>صورة المنتج</span>
                 </label>
-                <div className="flex gap-4 items-center">
-                  <img 
-                    src={editingProduct.image} 
-                    alt="Preview" 
-                    className="w-14 h-14 rounded-lg object-cover bg-white border border-stone-200 shrink-0"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="flex-1 space-y-2">
-                    <input 
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="text-stone-600 text-xs file:bg-stone-100 file:text-stone-800 file:border-stone-200 file:px-3 file:py-1.5 file:rounded file:text-[10px] file:cursor-pointer hover:file:bg-stone-200 block w-full"
+                <div className="mt-3 grid grid-cols-[88px_1fr] gap-4 items-stretch">
+                  <div className="relative overflow-hidden rounded-xl bg-white border border-stone-200 min-h-24">
+                    <img
+                      src={editingProduct.image || DEFAULT_PRODUCT_IMAGE}
+                      alt="معاينة صورة المنتج"
+                      className="absolute inset-0 w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(event) => {
+                        setImagePreviewError(true);
+                        useImageFallback(event.currentTarget);
+                      }}
                     />
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-stone-500 font-bold shrink-0">أو رابط الصورة:</span>
-                      <input 
+                    {isProcessingImage && <div className="absolute inset-0 bg-white/85 flex items-center justify-center text-[10px] font-bold text-amber-800">جارٍ التجهيز...</div>}
+                  </div>
+
+                  <div className="space-y-3 min-w-0">
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="bg-stone-900 hover:bg-stone-800 text-white rounded-lg px-3 py-2 text-[10px] font-bold cursor-pointer flex items-center justify-center gap-1.5 transition-colors">
+                        <Upload className="w-3.5 h-3.5" />
+                        اختيار ملف
+                        <input type="file" accept="image/*" onChange={handleImageUpload} className="sr-only" />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleClipboardImageButton}
+                        className="bg-amber-100 hover:bg-amber-200 text-amber-950 rounded-lg px-3 py-2 text-[10px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5" />
+                        لصق صورة
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <Link2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
+                      <input
                         type="text"
-                        value={editingProduct.image || ''}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
-                        placeholder="أدخل رابط الصورة مباشرة (URL)"
-                        className="w-full bg-white border border-stone-200 focus:border-amber-500 rounded px-2 py-1 text-[10px] text-stone-800 focus:outline-none"
+                        inputMode="url"
+                        dir="ltr"
+                        value={editingProduct.image?.startsWith('data:image/') ? '' : (editingProduct.image || '')}
+                        onChange={(event) => {
+                          setEditingProduct({ ...editingProduct, image: event.target.value });
+                          setImagePreviewError(false);
+                        }}
+                        placeholder="https://example.com/product.jpg"
+                        aria-label="رابط صورة المنتج"
+                        className="w-full bg-white border border-stone-200 focus:border-amber-500 rounded-lg pr-8 pl-2.5 py-2 text-[10px] text-stone-800 focus:outline-none"
                       />
                     </div>
-                    <p className="text-[9px] text-stone-500 font-medium">يمكنك تحميل ملف صورة من جهازك وسيتم ضغطه تلقائياً، أو لصق رابط صورة مباشر عيوني.</p>
+
+                    <p className="text-[9px] text-stone-500 font-medium leading-relaxed">
+                      اسحب الصورة هنا، اخترها من الجهاز، الصقها من الحافظة، أو أضف رابطاً مباشراً. الحد الأقصى 10 ميغابايت.
+                    </p>
+                    {imagePreviewError && <p className="text-[9px] text-rose-600 font-bold">تعذر عرض الرابط الحالي، وستظهر الصورة البديلة حتى يتم تصحيحه.</p>}
                   </div>
                 </div>
               </div>
@@ -2149,9 +2317,10 @@ export default function AdminPanel({
               {/* Submit button inside form */}
               <button
                 type="submit"
-                className="w-full bg-amber-500 hover:bg-amber-600 text-black font-black py-3 rounded-xl text-xs transition-colors cursor-pointer mt-2 shadow-md shadow-amber-500/10"
+                disabled={isSavingProduct || isProcessingImage}
+                className="w-full bg-amber-500 hover:bg-amber-600 text-black font-black py-3 rounded-xl text-xs transition-colors cursor-pointer mt-2 shadow-md shadow-amber-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                تأكيد وحفظ بيانات المنتج في قاعدة البيانات 💾
+                {isSavingProduct ? 'جارٍ حفظ المنتج...' : 'تأكيد وحفظ بيانات المنتج في قاعدة البيانات 💾'}
               </button>
 
             </form>
