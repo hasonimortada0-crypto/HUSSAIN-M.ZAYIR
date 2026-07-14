@@ -1339,11 +1339,14 @@ export default function App() {
             </div>
           </div>
 
-       
+
+
         </div>
       </section>
 
-
+      {/* Trust Blocks */}
+      <section className="bg-yellow-400/20 border-t-2 border-amber-500/20 py-12 px-4 sm:px-8">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-[#FFFDF0] p-6 rounded-xl border-2 border-yellow-400 space-y-2 text-right shadow-sm">
             <h4 className="font-black text-sm text-stone-950">🚚 سرعة الشحن والتوصيل بالعراق</h4>
             <p className="text-xs text-stone-800 leading-relaxed font-bold">

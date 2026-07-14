@@ -218,8 +218,8 @@ export default function AdminPanel({
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const arrayBuffer = evt.target?.result;
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         
@@ -241,19 +241,54 @@ export default function AdminPanel({
             return key ? rowObj[key] : undefined;
           };
 
-          const name = getValueByPatterns(row, [/^الاسم$/i, /^اسم المنتج$/i, /^الاسم بالعربي$/i, /^name$/i, /^product_name$/i, /^product name$/i]);
-          const englishName = getValueByPatterns(row, [/^الاسم بالانكليزي$/i, /^الاسم بالانجليزي$/i, /^english_name$/i, /^english name$/i, /^englishName$/i, /^english_title$/i]);
-          const description = getValueByPatterns(row, [/^الوصف$/i, /^وصف$/i, /^الوصف التفصيلي$/i, /^description$/i, /^details$/i]);
-          const priceUSD = getValueByPatterns(row, [/^السعر بالدولار$/i, /^السعر$/i, /^السعر دولار$/i, /^price$/i, /^priceusd$/i, /^price usd$/i, /^price_usd$/i]);
+          let name = getValueByPatterns(row, [/^الاسم$/i, /^اسم المنتج$/i, /^الاسم بالعربي$/i, /^name$/i, /^product_name$/i, /^product name$/i]);
+          if (!name) {
+            // Smart fallback: find any column containing "اسم" or "name" or common Iraqi terms
+            const keys = Object.keys(row);
+            const likelyNameKey = keys.find(k => k.includes("اسم") || k.toLowerCase().includes("name") || k.includes("الاسم") || k.includes("مادة") || k.includes("ماده") || k.includes("منتج") || k.includes("تسمية") || k.includes("التفاصيل"));
+            if (likelyNameKey) {
+              name = row[likelyNameKey];
+            } else if (keys.length > 0) {
+              // Fallback to the very first column in the spreadsheet
+              name = row[keys[0]];
+            }
+          }
+
+          const englishName = getValueByPatterns(row, [/^الاسم بالانكليزي$/i, /^الاسم بالانجليزي$/i, /^english_name$/i, /^english name$/i, /^englishName$/i, /^english_title$/i]) || '';
+          const description = getValueByPatterns(row, [/^الوصف$/i, /^وصف$/i, /^الوصف التفصيلي$/i, /^description$/i, /^details$/i]) || '';
+          
+          let priceUSD = getValueByPatterns(row, [/^السعر بالدولار$/i, /^السعر$/i, /^السعر دولار$/i, /^price$/i, /^priceusd$/i, /^price usd$/i, /^price_usd$/i]);
+          if (priceUSD === undefined) {
+            // Smart fallback for price
+            const keys = Object.keys(row);
+            const likelyPriceKey = keys.find(k => k.includes("سعر") || k.toLowerCase().includes("price") || k.toLowerCase().includes("usd") || k.includes("الدولار") || k.includes("قيمة") || k.includes("قيمه") || k.includes("سعر المفرد") || k.includes("مفرد"));
+            if (likelyPriceKey) {
+              priceUSD = row[likelyPriceKey];
+            }
+          }
+
           const categoryRaw = getValueByPatterns(row, [/^الفئة$/i, /^القسم$/i, /^الفئه$/i, /^category$/i, /^department$/i]);
           const subcategory = getValueByPatterns(row, [/^الفئة الفرعية$/i, /^القسم الفرعي$/i, /^الفئه الفرعيه$/i, /^subcategory$/i, /^sub-category$/i, /^sub_category$/i]);
           const image = getValueByPatterns(row, [/^الصورة$/i, /^رابط الصورة$/i, /^رابط صوره$/i, /^صورة$/i, /^image$/i, /^imageurl$/i, /^image url$/i, /^picture$/i]);
           const specsRaw = getValueByPatterns(row, [/^المواصفات$/i, /^مواصفات$/i, /^specs$/i, /^specifications$/i]);
 
-          // Category mapping helper
+          // Category mapping helper with name keyword scanning fallback
           let category = "lighting-indoor";
-          if (categoryRaw) {
-            const catStr = String(categoryRaw).trim();
+          const catStr = categoryRaw ? String(categoryRaw).trim() : "";
+          if (!catStr && name) {
+            const nLower = String(name).toLowerCase();
+            if (/سبوت|ثريا|داخل|indoor|إضاءة داخلية|انارة داخلية|إنارة داخلية|مصباح|قلادة|ابليك داخل/i.test(nLower)) {
+              category = "lighting-indoor";
+            } else if (/كشاف|حديقة|خارجي|outdoor|إضاءة خارجية|انارة خارجية|إنارة خارجية|شارع|طاقة شمسية|ابليك خارج/i.test(nLower)) {
+              category = "lighting-outdoor";
+            } else if (/مفتاح|سويتش|لمس|ذك|smart|switch|تحكم|مأخذ/i.test(nLower)) {
+              category = "smart-switches";
+            } else if (/مروحة|شفاط|جهاز حماية|سبلت|مكيف|تهوية|تهويه|appliance/i.test(nLower)) {
+              category = "appliances";
+            } else if (/واير|سلك|كيبل|قاطع|جوزة|جوزات|تأسيس|cable|wire|electrical|اسلاك/i.test(nLower)) {
+              category = "electrical-supplies";
+            }
+          } else if (catStr) {
             if (/داخل|indoor|إضاءة داخلية|انارة داخلية|إنارة داخلية/i.test(catStr)) {
               category = "lighting-indoor";
             } else if (/خارج|outdoor|إضاءة خارجية|انارة خارجية|إنارة خارجية/i.test(catStr)) {
@@ -274,10 +309,8 @@ export default function AdminPanel({
               specs = specsRaw;
             } else {
               try {
-                // Check if it's a JSON string
                 specs = JSON.parse(String(specsRaw));
               } catch {
-                // Otherwise split by comma/semicolon and colon
                 const parts = String(specsRaw).split(/,|;|\n/);
                 parts.forEach((p) => {
                   const colonIndex = p.indexOf(':');
@@ -291,7 +324,7 @@ export default function AdminPanel({
             }
           }
 
-          // If specs are empty, let's also automatically add any other columns as specs if they are not mapped
+          // Gather any other extra columns as specs if they are not already mapped
           const mappedKeysSet = new Set([
             "الاسم", "اسم المنتج", "الاسم بالعربي", "name", "product_name", "product name",
             "الاسم بالانكليزي", "الاسم بالانجليزي", "english_name", "english name", "englishName",
@@ -303,25 +336,28 @@ export default function AdminPanel({
             "المواصفات", "مواصفات", "specs", "specifications"
           ].map(k => k.toLowerCase()));
 
-          // Gather unmapped columns into specs
           Object.keys(row).forEach((k) => {
             if (!mappedKeysSet.has(k.trim().toLowerCase()) && String(row[k]).trim() !== '') {
               specs[k.trim()] = String(row[k]);
             }
           });
 
-          // Standardize prices
+          // Standardize prices with smart IQD to USD conversion
           let priceNum = 0;
           if (priceUSD !== undefined) {
-            // Remove dollar signs, commas, and spaces
             const cleanedPrice = String(priceUSD).replace(/[^0-9.]/g, '');
             priceNum = parseFloat(cleanedPrice) || 0;
+            
+            // Intelligently convert Iraqi Dinar inputs (e.g. 15000) to base USD (e.g. 10)
+            if (priceNum > 250) {
+              priceNum = priceNum / exchangeRate;
+            }
           }
 
           return {
             name: name ? String(name).trim() : undefined,
             englishName: englishName ? String(englishName).trim() : '',
-            description: description ? String(description).trim() : '',
+            description: description ? String(description).trim() : (name ? `${String(name).trim()} للإنارة والأجهزة من متجر نيوسرام الفاخر عيوني.` : ''),
             priceUSD: priceNum,
             category,
             subcategory: subcategory ? String(subcategory).trim() : '',
@@ -341,7 +377,50 @@ export default function AdminPanel({
         triggerNotification("عذراً، حدث خطأ أثناء قراءة ملف الـ Excel. يرجى التحقق من صياغته ❌");
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Handle bulk image matching from user's device
+  const handleBulkImagesUpload = (files: File[]) => {
+    if (excelProductsPreview.length === 0) return;
+    
+    let matchCount = 0;
+    let processed = 0;
+    const updated = [...excelProductsPreview];
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const base64 = evt.target?.result as string;
+        if (base64) {
+          // Remove extension from filename and make clean comparison
+          const lastDotIdx = file.name.lastIndexOf('.');
+          const nameWithoutExt = lastDotIdx > -1 ? file.name.substring(0, lastDotIdx).trim().toLowerCase() : file.name.trim().toLowerCase();
+          
+          // Find matching products
+          updated.forEach((prod, idx) => {
+            if (!prod.name) return;
+            const prodName = prod.name.trim().toLowerCase();
+            // Match if exact or includes
+            if (prodName === nameWithoutExt || prodName.includes(nameWithoutExt) || nameWithoutExt.includes(prodName)) {
+              updated[idx].image = base64;
+              matchCount++;
+            }
+          });
+        }
+        
+        processed++;
+        if (processed === files.length) {
+          setExcelProductsPreview(updated);
+          if (matchCount > 0) {
+            triggerNotification(`تمت مطابقة وتعيين ${matchCount} صورة لمنتجاتك المستوردة بنجاح عيوني! 📸🎉`);
+          } else {
+            triggerNotification("تم قراءة الملفات بنجاح عيوني! لم نتمكن من مطابقة الأسماء تلقائياً. يرجى سحب وتعيين الصورة يدوياً للمنتجات من الجدول أدناه.");
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   // Submit Bulk Products to API
@@ -1463,38 +1542,96 @@ export default function AdminPanel({
                           </span>
                         </div>
 
-                        {/* List of some products preview */}
-                        <div className="border border-stone-200/60 rounded-lg overflow-hidden bg-white text-[11px]">
-                          <table className="w-full text-right border-collapse">
-                            <thead>
-                              <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold">
-                                <th className="p-2 text-right">اسم المنتج</th>
-                                <th className="p-2 text-right">الفئة</th>
-                                <th className="p-2 text-center">السعر بالدولار</th>
-                                <th className="p-2 text-center">السعر بالدينار</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {excelProductsPreview.slice(0, 5).map((p, i) => (
-                                <tr key={i} className="border-b border-stone-100 last:border-none">
-                                  <td className="p-2 font-bold text-stone-900 truncate max-w-[150px]">{p.name}</td>
-                                  <td className="p-2 text-stone-600">
-                                    {p.category === 'lighting-indoor' ? '💡 إنارة داخلية' :
-                                     p.category === 'lighting-outdoor' ? '☀️ إنارة خارجية' :
-                                     p.category === 'smart-switches' ? '🔌 مفاتيح ذكية' :
-                                     p.category === 'appliances' ? '🌬️ تهوية وأجهزة' : '🔌 أسلاك وتأسيس'}
-                                  </td>
-                                  <td className="p-2 text-center font-mono font-medium text-stone-600">${p.priceUSD}</td>
-                                  <td className="p-2 text-center font-mono font-bold text-amber-700">{(p.priceUSD * exchangeRate).toLocaleString()} د.ع</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          {excelProductsPreview.length > 5 && (
-                            <div className="bg-stone-50 p-2 text-center font-bold text-stone-500 border-t border-stone-100">
-                              وغيرها {excelProductsPreview.length - 5} منتج إضافي...
+                        {/* Smart Image Matching Zone */}
+                        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 text-center space-y-2">
+                          <span className="font-black text-amber-950 block text-xs">📸 مطابقة صور المنتجات الذكية (اختياري)</span>
+                          <p className="text-[10px] text-stone-600 leading-relaxed max-w-xl mx-auto">
+                            بما أن صور المنتجات مخزنة كملفات على جهازك عيوني وليست روابط إنترنت، يمكنك تحديد أو سحب وإفلات جميع صور الأجهزة والإنارة هنا معاً! وسيقوم نظام "نيوسرام" بمطابقتها تلقائياً حسب اسم الصورة واسم المنتج عيوني.
+                          </p>
+                          <label className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-black font-black text-[11px] px-4 py-2 rounded-lg cursor-pointer transition-colors shadow-sm">
+                            <input 
+                              type="file" 
+                              multiple 
+                              accept="image/*" 
+                              className="hidden" 
+                              onChange={(e) => {
+                                const files = e.target.files;
+                                if (files) handleBulkImagesUpload(Array.from(files));
+                              }}
+                            />
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>اختيار صور منتجات متعددة من جهازك 💻</span>
+                          </label>
+                        </div>
+
+                        {/* List of ALL products preview with scroll & individual photo uploader */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] text-stone-500 font-bold uppercase block">جدول مراجعة المنتجات والتحكم بالصور ({excelProductsPreview.length} منتج):</label>
+                          <div className="border border-stone-200 rounded-lg overflow-hidden bg-white text-[11px]">
+                            <div className="max-h-[320px] overflow-y-auto">
+                              <table className="w-full text-right border-collapse">
+                                <thead className="sticky top-0 bg-stone-50 border-b border-stone-200 text-stone-500 font-bold z-10 shadow-sm">
+                                  <tr>
+                                    <th className="p-2 text-center w-12">الصورة</th>
+                                    <th className="p-2 text-right">اسم المنتج</th>
+                                    <th className="p-2 text-right">الفئة</th>
+                                    <th className="p-2 text-center">السعر بالدولار</th>
+                                    <th className="p-2 text-center">السعر بالدينار</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {excelProductsPreview.map((p, i) => (
+                                    <tr key={i} className="border-b border-stone-100 last:border-none hover:bg-stone-50/50 transition-colors">
+                                      {/* Image cell with individual file upload */}
+                                      <td className="p-2 text-center align-middle relative group">
+                                        <div className="w-9 h-9 mx-auto rounded-lg overflow-hidden border border-stone-200 bg-stone-50 relative flex items-center justify-center">
+                                          <img 
+                                            src={p.image} 
+                                            alt="" 
+                                            className="w-full h-full object-cover" 
+                                          />
+                                          <label className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity text-white text-[8px] font-black gap-0.5">
+                                            <input 
+                                              type="file" 
+                                              accept="image/*" 
+                                              className="hidden" 
+                                              onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                  const r = new FileReader();
+                                                  r.onload = (re) => {
+                                                    const base64 = re.target?.result as string;
+                                                    if (base64) {
+                                                      const updated = [...excelProductsPreview];
+                                                      updated[i].image = base64;
+                                                      setExcelProductsPreview(updated);
+                                                      triggerNotification(`تم تعيين صورة للمنتج "${p.name}" عيوني! 📸`);
+                                                    }
+                                                  };
+                                                  r.readAsDataURL(file);
+                                                }
+                                              }}
+                                            />
+                                            <span>تغيير</span>
+                                            <span>📸</span>
+                                          </label>
+                                        </div>
+                                      </td>
+                                      <td className="p-2 font-bold text-stone-900 truncate max-w-[150px]">{p.name}</td>
+                                      <td className="p-2 text-stone-600">
+                                        {p.category === 'lighting-indoor' ? '💡 إنارة داخلية' :
+                                         p.category === 'lighting-outdoor' ? '☀️ إنارة خارجية' :
+                                         p.category === 'smart-switches' ? '🔌 مفاتيح ذكية' :
+                                         p.category === 'appliances' ? '🌬️ تهوية وأجهزة' : '🔌 أسلاك وتأسيس'}
+                                      </td>
+                                      <td className="p-2 text-center font-mono font-medium text-stone-600">${p.priceUSD}</td>
+                                      <td className="p-2 text-center font-mono font-bold text-amber-700">{(p.priceUSD * exchangeRate).toLocaleString()} د.ع</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
-                          )}
+                          </div>
                         </div>
 
                         {/* Settings for import */}
@@ -1719,20 +1856,12 @@ export default function AdminPanel({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-stone-500 font-bold uppercase">سعر صرف الدولار المعتمد مقابل الدينار (ثابت)</label>
-                  <input 
-                    type="number"
-                    value={exchangeRate}
-                    onChange={(e) => setExchangeRate(parseInt(e.target.value) || 1500)}
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-amber-500 rounded-lg p-2.5 text-xs text-stone-900 focus:outline-none font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-stone-500 font-bold uppercase">صلاحيات النسخ والاحتياط</label>
-                  <div className="pt-1.5 text-stone-500 text-[11px] font-medium">
-                    * يتم معالجة الحساب فورا وتحديثه بكامل التطبيق.
+                  <label className="text-[10px] text-stone-500 font-bold uppercase">حالة المزامنة والربط الإلكتروني</label>
+                  <div className="pt-1.5 text-stone-600 text-xs font-bold flex items-center gap-1.5 bg-stone-50 p-2.5 rounded-lg border border-stone-200">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                    <span>تم ربط المتجر تلقائياً بقاعدة البيانات والمخازن عيوني 🏛️</span>
                   </div>
                 </div>
               </div>
