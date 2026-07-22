@@ -13,6 +13,7 @@ interface ProductCardProps {
   onEdit?: (product: Product) => void;
   onDelete?: (productId: string, productName: string) => void;
   exchangeRate?: number;
+  priority?: boolean;
 }
 
 export default function ProductCard({ 
@@ -23,7 +24,8 @@ export default function ProductCard({
   isAdmin, 
   onEdit, 
   onDelete,
-  exchangeRate
+  exchangeRate,
+  priority = false
 }: ProductCardProps) {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [addedAnimation, setAddedAnimation] = useState(false);
@@ -62,6 +64,9 @@ export default function ProductCard({
             alt={product.name} 
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             referrerPolicy="no-referrer"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : 'auto'}
+            decoding="async"
           />
           {product.tags && product.tags.length > 0 && (
             <div className="absolute bottom-3 right-3 flex flex-wrap gap-1">
@@ -123,7 +128,7 @@ export default function ProductCard({
               {/* More details link as in screenshot */}
               <button
                 onClick={() => setShowDetailsModal(true)}
-                className="text-stone-500 hover:text-stone-950 text-[10px] sm:text-xs font-black transition-colors cursor-pointer pt-0.5"
+                className="w-full py-2 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-blue-700 bg-blue-600 text-white hover:bg-blue-700 hover:border-blue-800 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 text-[11px] sm:text-xs font-black transition-all duration-200 cursor-pointer shadow-sm"
               >
                 المزيد من التفاصيل
               </button>

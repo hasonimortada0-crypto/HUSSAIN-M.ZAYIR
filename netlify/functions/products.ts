@@ -19,13 +19,37 @@ function normalizeProduct(input: JsonRecord, forcedId?: string) {
 }
 
 async function listProducts() {
-  await ensureProductsSeeded();
-  const rows = await database.sql`
-    SELECT data
+  let rows = await database.sql`
+    SELECT data, updated_at
     FROM products
     ORDER BY created_at ASC, id ASC
   `;
-  return rows.map((row) => row.data);
+
+  if (rows.length === 0) {
+    await ensureProductsSeeded();
+    rows = await database.sql`
+      SELECT data, updated_at
+      FROM products
+      ORDER BY created_at ASC, id ASC
+    `;
+  }
+
+  return rows.map((row) => {
+    const product = row.data as JsonRecord;
+    const image = typeof product.image === "string" ? product.image : "";
+
+    if (!image.startsWith("data:image/")) return product;
+
+    const version = new Date(row.updated_at as string | number | Date).getTime();
+    return {
+      ...product,
+      image: `/api/product-images/${encodeURIComponent(String(product.id))}?v=${version}`,
+    };
+  });
+}
+
+function isGeneratedImagePath(value: unknown) {
+  return typeof value === "string" && value.startsWith("/api/product-images/");
 }
 
 async function saveProduct(request: Request, id?: string) {
@@ -49,6 +73,9 @@ async function updateProduct(request: Request, id: string) {
   const input = await request.json() as JsonRecord;
   const [existing] = await database.sql`SELECT data FROM products WHERE id = ${id}`;
   if (!existing) return json({ error: "المنتج غير موجود." }, 404);
+
+  if (isGeneratedImagePath(input.image)) delete input.image;
+
   return saveProduct(new Request(request.url, {
     method: "POST",
     headers: request.headers,
@@ -100,7 +127,15 @@ export default async function handler(request: Request, context: FunctionContext
 
   try {
     let response: Response;
-    if (request.method === "GET" && !id && !isBulk) response = json(await listProducts());
+    if (request.method === "GET" && !id && !isBulk) {
+      const forceRefresh = url.searchParams.has("refresh");
+      response = json(await listProducts(), 200, forceRefresh ? {
+        "Cache-Control": "no-store, max-age=0",
+      } : {
+        "Cache-Control": "public, max-age=30, stale-while-revalidate=300",
+        "Netlify-CDN-Cache-Control": "public, durable, max-age=60, stale-while-revalidate=300",
+      });
+    }
     else if (request.method === "POST" && isBulk) response = await saveBulk(request);
     else if (request.method === "POST" && !id) response = await saveProduct(request);
     else if (request.method === "PUT" && id) response = await updateProduct(request, id);

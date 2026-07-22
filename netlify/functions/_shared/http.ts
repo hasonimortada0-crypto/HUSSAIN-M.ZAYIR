@@ -4,8 +4,8 @@ export const jsonHeaders = {
   "X-Content-Type-Options": "nosniff",
 };
 
-export function json(data: unknown, status = 200) {
-  return Response.json(data, { status, headers: jsonHeaders });
+export function json(data: unknown, status = 200, headers: HeadersInit = {}) {
+  return Response.json(data, { status, headers: { ...jsonHeaders, ...headers } });
 }
 
 export function methodNotAllowed(allowed: string[]) {

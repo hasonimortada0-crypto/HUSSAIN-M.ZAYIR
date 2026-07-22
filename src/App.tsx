@@ -33,8 +33,23 @@ import ProductCard from './components/ProductCard';
 import AIAdvisor from './components/AIAdvisor';
 import AdminPanel from './components/AdminPanel';
 import ShoppingModals from './components/ShoppingModals';
-// @ts-ignore
-import newsramLogo from './assets/images/newsram_main_logo_1783357135473.jpg';
+import initialProducts from './products.json';
+
+const newsramLogo = '/newsram-logo.jpg';
+
+const PRODUCT_CACHE_KEY = 'newsram_products_cache_v2';
+
+const getInitialProducts = (): Product[] => {
+  try {
+    const cachedProducts = localStorage.getItem(PRODUCT_CACHE_KEY);
+    if (cachedProducts) {
+      const parsed = JSON.parse(cachedProducts);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+
+  return (initialProducts as Product[]).slice(0, 16);
+};
 
 const normalizePhone = (phone: string): string => {
   if (!phone) return "";
@@ -54,7 +69,7 @@ const normalizePhone = (phone: string): string => {
 };
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(getInitialProducts);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -127,7 +142,7 @@ export default function App() {
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   const getAppUrl = () => {
-    return "https://newsram-155224210798.europe-west3.run.app";
+    return "https://newsramstore.com";
   };
 
   // Toast Notification Trigger
@@ -139,17 +154,23 @@ export default function App() {
   };
 
   // Load products dynamically
-  const fetchProducts = async () => {
+  const fetchProducts = async (forceRefresh = false) => {
     try {
-      const response = await fetch('/api/products');
+      const endpoint = forceRefresh ? `/api/products?refresh=${Date.now()}` : '/api/products';
+      const response = await fetch(endpoint, { cache: forceRefresh ? 'no-store' : 'default' });
       if (!response.ok) throw new Error(`Products request failed: ${response.status}`);
       const data = await response.json();
       if (!Array.isArray(data)) throw new Error('Products response is not an array');
       setProducts(data);
+      try {
+        localStorage.setItem(PRODUCT_CACHE_KEY, JSON.stringify(data));
+      } catch {}
     } catch (error) {
       console.error("Error fetching products from database:", error);
-      setProducts([]);
-      triggerNotification("تعذر تحميل المنتجات من قاعدة البيانات. يرجى إعادة المحاولة.");
+      if (products.length === 0) {
+        setProducts((initialProducts as Product[]).slice(0, 16));
+        triggerNotification("تعذر تحديث المنتجات الآن، وتم عرض النسخة المتاحة.");
+      }
     }
   };
 
@@ -196,8 +217,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    if (isAdminAuthenticated) fetchOrders();
+  }, [isAdminAuthenticated]);
 
   // Load cart from localStorage
   useEffect(() => {
@@ -1060,7 +1081,7 @@ export default function App() {
         {filteredProducts.length > 0 ? (
           <div className="space-y-12">
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 sm:gap-6">
-              {(selectedCategory === 'all' ? filteredProducts.slice(0, visibleCount) : filteredProducts).map((prod) => (
+              {(selectedCategory === 'all' ? filteredProducts.slice(0, visibleCount) : filteredProducts).map((prod, index) => (
                 <ProductCard 
                   key={prod.id} 
                   product={prod} 
@@ -1068,6 +1089,7 @@ export default function App() {
                   isFavorite={favoritedIds.includes(prod.id)}
                   onToggleFavorite={() => handleToggleFavorite(prod.id)}
                   isAdmin={isAdminAuthenticated && adminRole === 'admin'}
+                  priority={index < 4}
                   onEdit={(p) => {
                     setExternalProductToEdit(p);
                     if (!isAdminAuthenticated) {
@@ -1305,7 +1327,7 @@ export default function App() {
 
       {/* Modular Shopping Cart & Checkout Modals */}
       <ShoppingModals 
-        exchangeRate={currentExchangeRate}
+                  exchangeRate={currentExchangeRate}
         isCartOpen={isCartOpen}
         setIsCartOpen={setIsCartOpen}
         cart={cart}
@@ -1346,7 +1368,7 @@ export default function App() {
           setShowPasswordDialog(false);
         }}
         products={products}
-        onRefreshProducts={fetchProducts}
+        onRefreshProducts={() => fetchProducts(true)}
         orders={orders}
         onRefreshOrders={fetchOrders}
         isAdminAuthenticated={isAdminAuthenticated}

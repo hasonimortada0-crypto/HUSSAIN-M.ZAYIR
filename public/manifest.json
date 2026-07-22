@@ -4,15 +4,27 @@
   "description": "متجر نيوسرام للأجهزة الكهربائية والإنارة الحديثة الفاخرة",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#000000",
+  "background_color": "#ffffff",
+  "theme_color": "#DFB13C",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/src/assets/images/newsram_logo_1783124484393.jpg",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/jpeg",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
