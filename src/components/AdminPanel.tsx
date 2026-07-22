@@ -27,6 +27,7 @@ import {
 import * as XLSX from 'xlsx';
 import { Product } from '../types';
 import { USD_TO_IQD } from '../data';
+import { PRODUCT_WARRANTY, withProductWarranty } from '../productWarranty';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -593,7 +594,7 @@ export default function AdminPanel({
       rating: 5.0,
       reviewsCount: 1,
       specs: {
-        'الضمان': 'سنتين استبدال فوري',
+        'الضمان': PRODUCT_WARRANTY,
         'المنشأ': 'أصلي عالي الجودة'
       },
       inStock: true,
@@ -605,7 +606,7 @@ export default function AdminPanel({
   };
 
   const handleEditProductClick = (product: Product) => {
-    setEditingProduct({ ...product });
+    setEditingProduct(withProductWarranty(product));
     setNewSpecKey('');
     setNewSpecValue('');
     setIsProductFormOpen(true);

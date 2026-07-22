@@ -1,5 +1,6 @@
 import { createId, database, ensureProductsSeeded, type JsonRecord } from "./_shared/database";
 import { errorResponse, json, methodNotAllowed } from "./_shared/http";
+import { PRODUCT_WARRANTY } from "../../src/productWarranty";
 
 type FunctionContext = {
   params: Record<string, string>;
@@ -8,12 +9,19 @@ type FunctionContext = {
 
 function normalizeProduct(input: JsonRecord, forcedId?: string) {
   const id = forcedId || (typeof input.id === "string" && input.id.trim()) || createId("prod");
+  const specs = input.specs && typeof input.specs === "object" && !Array.isArray(input.specs)
+    ? input.specs as JsonRecord
+    : {};
+
   return {
     ...input,
     id,
     rating: Number(input.rating) || 5,
     reviewsCount: Number(input.reviewsCount) || 1,
-    specs: input.specs && typeof input.specs === "object" ? input.specs : {},
+    specs: {
+      ...specs,
+      'الضمان': PRODUCT_WARRANTY,
+    },
     tags: Array.isArray(input.tags) ? input.tags : [],
   };
 }

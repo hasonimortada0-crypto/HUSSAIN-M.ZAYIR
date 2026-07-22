@@ -34,6 +34,7 @@ import AIAdvisor from './components/AIAdvisor';
 import AdminPanel from './components/AdminPanel';
 import ShoppingModals from './components/ShoppingModals';
 import initialProducts from './products.json';
+import { withProductWarranty } from './productWarranty';
 
 const newsramLogo = '/newsram-logo.jpg';
 
@@ -44,11 +45,11 @@ const getInitialProducts = (): Product[] => {
     const cachedProducts = localStorage.getItem(PRODUCT_CACHE_KEY);
     if (cachedProducts) {
       const parsed = JSON.parse(cachedProducts);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) return (parsed as Product[]).map(withProductWarranty);
     }
   } catch {}
 
-  return (initialProducts as Product[]).slice(0, 16);
+  return (initialProducts as Product[]).slice(0, 16).map(withProductWarranty);
 };
 
 const normalizePhone = (phone: string): string => {
@@ -161,14 +162,15 @@ export default function App() {
       if (!response.ok) throw new Error(`Products request failed: ${response.status}`);
       const data = await response.json();
       if (!Array.isArray(data)) throw new Error('Products response is not an array');
-      setProducts(data);
+      const normalizedProducts = (data as Product[]).map(withProductWarranty);
+      setProducts(normalizedProducts);
       try {
-        localStorage.setItem(PRODUCT_CACHE_KEY, JSON.stringify(data));
+        localStorage.setItem(PRODUCT_CACHE_KEY, JSON.stringify(normalizedProducts));
       } catch {}
     } catch (error) {
       console.error("Error fetching products from database:", error);
       if (products.length === 0) {
-        setProducts((initialProducts as Product[]).slice(0, 16));
+        setProducts((initialProducts as Product[]).slice(0, 16).map(withProductWarranty));
         triggerNotification("تعذر تحديث المنتجات الآن، وتم عرض النسخة المتاحة.");
       }
     }
